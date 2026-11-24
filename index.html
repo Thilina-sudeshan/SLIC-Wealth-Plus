@@ -302,7 +302,7 @@ $('calcBtn').addEventListener('click', () => {
     const tr = document.createElement('tr');
     if([6,11,16].includes(r.y)) tr.className = 'band-start';
     tr.innerHTML = `<td>${r.calYear}</td><td>${hasAge ? r.age : r.y}</td>
-      <td>${fmt(r.paid)}</td>
+      <td${r.prem ? '' : ' style="text-align:center"'}>${r.prem ? fmt(r.paid) : '&mdash;'}</td>
       <td>${fmt(r.ga)}</td><td>${fmt(r.bonus)}</td>
       <td>${fmt(r.totalAdded)}</td><td class="value">${fmt(r.value)}</td><td>${fmt(r.death)}</td>`;
     body.appendChild(tr);
@@ -441,13 +441,14 @@ async function buildWorkbook(inp, res){
   let rowNo = 18;
   res.rows.forEach((r, idx) => {
     const row = ws.getRow(rowNo++); row.height = 18;
-    const vals = [r.calYear, hasAge ? r.age : r.y, r.paid, r.ga, r.bonus, r.totalAdded, r.value, r.death];
+    // Total Paid shows a dash once the premium paying term is over
+    const vals = [r.calYear, hasAge ? r.age : r.y, r.prem ? r.paid : '—', r.ga, r.bonus, r.totalAdded, r.value, r.death];
     vals.forEach((v, i) => {
       const cell = row.getCell(i + 1);
       cell.value = v;
       cell.border = box;
-      if(i >= 2) cell.numFmt = '#,##0.00';
-      cell.alignment = {horizontal: i < 2 ? 'center' : 'right', vertical:'middle'};
+      if(i >= 2 && typeof v === 'number') cell.numFmt = '#,##0.00';
+      cell.alignment = {horizontal: i < 2 || typeof v !== 'number' ? 'center' : 'right', vertical:'middle'};
       if(idx % 2) cell.fill = fill(ZEBRA);
       if(i === 6) cell.font = {bold:true, color:{argb:TEAL}};
     });
@@ -547,7 +548,7 @@ async function buildPdf(inp, res){
   doc.autoTable({
     startY: y + 3.5, margin:{left:L, right:L}, theme:'grid',
     head:[['Year', hasAge ? 'Age' : 'Policy Year', 'Total Paid', 'Guaranteed Addition', 'Bonus', 'Total Added', 'Customer Value', 'Death Benefit']],
-    body: res.rows.map(r => [r.calYear, hasAge ? r.age : r.y, fmt(r.paid), fmt(r.ga), fmt(r.bonus), fmt(r.totalAdded), fmt(r.value), fmt(r.death)]),
+    body: res.rows.map(r => [r.calYear, hasAge ? r.age : r.y, r.prem ? fmt(r.paid) : {content:'-', styles:{halign:'center'}}, fmt(r.ga), fmt(r.bonus), fmt(r.totalAdded), fmt(r.value), fmt(r.death)]),
     foot:[[{content:'TOTAL', colSpan:2, styles:{halign:'center'}}, fmt(res.paid), fmt(res.cumGA), fmt(res.cumBonus), fmt(res.cumGA + res.cumBonus), fmt(res.maturity), '']],
     showFoot:'lastPage',
     styles:{fontSize:7.8, cellPadding:1.25, lineColor:LINE, lineWidth:0.2, halign:'right', textColor:[19,38,43]},
