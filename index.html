@@ -120,7 +120,7 @@
     <div class="fields">
       <div class="full"><label for="name">Name</label><input type="text" id="name" placeholder="Customer name" autocomplete="off"></div>
       <div><label for="dob">Date of birth</label><input type="date" id="dob"></div>
-      <div><label for="age">Age</label><input type="number" id="age" min="0" step="1" placeholder="Auto" inputmode="numeric"></div>
+      <div><label for="age">Age (nearest birthday)</label><input type="number" id="age" min="0" step="1" placeholder="Auto" inputmode="numeric"></div>
       <div class="full"><label for="gender">Gender</label>
         <select id="gender"><option value="">Select</option><option>Male</option><option>Female</option></select></div>
     </div>
@@ -198,12 +198,17 @@ const fmt0 = n => n.toLocaleString('en-US', {maximumFractionDigits:0});
 
 $('startYear').value = new Date().getFullYear();
 
-function calcAge(dobStr){
+// SLIC uses "age nearest birthday": completed years, +1 once 6 months have passed since the last birthday
+function calcAge(dobStr, today){
   if(!dobStr) return '';
-  const dob = new Date(dobStr), now = new Date();
-  let age = now.getFullYear() - dob.getFullYear();
-  if(now.getMonth() < dob.getMonth() || (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate())) age--;
-  return age >= 0 ? age : '';
+  const [y, m, d] = dobStr.split('-').map(Number);
+  const now = today || new Date();
+  let age = now.getFullYear() - y;
+  if(now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d)) age--;
+  if(age < 0) return '';
+  const sixMonthsAfterBirthday = new Date(y + age, m - 1 + 6, d);
+  if(now >= sixMonthsAfterBirthday) age++;
+  return age;
 }
 $('dob').addEventListener('change', () => { $('age').value = calcAge($('dob').value); });
 
