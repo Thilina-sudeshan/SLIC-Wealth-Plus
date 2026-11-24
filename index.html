@@ -100,7 +100,7 @@
   .footer{text-align:center; font-size:.78rem; color:var(--muted); padding:0 0 24px;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 </head>
 <body>
 <header class="hero">
@@ -336,34 +336,148 @@ function drawChart(inp, res){
   });
 }
 
-$('excelBtn').addEventListener('click', () => {
-  if(!last) return;
-  if(typeof XLSX === 'undefined'){ alert('Excel library failed to load. Check your internet connection and reload.'); return; }
-  const {inp, res} = last;
-  const aoa = [
-    ['SLIC Wealth Plus - Calculation'],
-    [],
-    ['Name', inp.name], ['Gender', inp.gender], ['Date of Birth', inp.dob], ['Age', inp.age],
-    ['Sum Assured (Rs.)', inp.sa], ['Term (years)', inp.term], ['Paying Term (years)', inp.payTerm],
-    ['Annual Premium (Rs.)', res.premium],
-    [],
-    ['Year', hasAge ? 'Age' : 'Policy Year','Premium (Rs.)','Total Paid (Rs.)','Guaranteed Addition (Rs.)','Bonus (Rs.)','Added This Year (Rs.)','Total Added (Rs.)','Customer Value (Rs.)','Death Benefit (Rs.)']
-  ];
-  const headerRow = aoa.length;
-  res.rows.forEach(r => aoa.push([r.calYear, hasAge ? r.age : r.y, r.prem, r.paid, r.ga, r.bonus, r.added, r.totalAdded, r.value, r.death]));
-  aoa.push(['Total','',res.paid,res.paid,res.cumGA,res.cumBonus,res.cumGA+res.cumBonus,res.cumGA+res.cumBonus,res.maturity]);
+// Styled Excel export (ExcelJS)
+async function buildWorkbook(inp, res){
+  const hasAge = inp.age !== '';
+  const TEAL = 'FF00838F', TEAL_DARK = 'FF05515A', TEAL_SOFT = 'FFE0F2F3', GOLD = 'FFF2B318', GOLD_SOFT = 'FFFFF5DA', ZEBRA = 'FFF6FAFA', LINE = 'FFD6E3E6', WHITE = 'FFFFFFFF';
+  const fill = c => ({type:'pattern', pattern:'solid', fgColor:{argb:c}});
+  const thin = {style:'thin', color:{argb:LINE}};
+  const box = {top:thin, left:thin, bottom:thin, right:thin};
+  const MONEY = '"Rs. "#,##0.00';
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:8},{wch:11},{wch:16},{wch:18},{wch:22},{wch:16},{wch:20},{wch:18},{wch:20},{wch:20}];
-  const money = '#,##0.00';
-  for(let R = headerRow; R < aoa.length; R++){
-    [2,3,4,5,6,7,8,9].forEach(C => { const cell = ws[XLSX.utils.encode_cell({r:R, c:C})]; if(cell && cell.t === 'n') cell.z = money; });
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'SLIC Wealth Plus Calculator';
+  const ws = wb.addWorksheet('Wealth Plus', {
+    views:[{showGridLines:false}],
+    pageSetup:{orientation:'landscape', paperSize:9, fitToPage:true, fitToWidth:1, fitToHeight:1,
+      margins:{left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.2, footer:0.2}}
+  });
+  ws.columns = [10, 12, 17, 18, 18, 17, 18, 18, 20, 20].map(w => ({width:w}));
+  const N = 10, lastCol = 'J';
+
+  // Header: logo + title
+  for(let r = 1; r <= 4; r++) ws.getRow(r).height = 21;
+  try{
+    const buf = await (await fetch('slic-logo.png')).arrayBuffer();
+    const id = wb.addImage({buffer:buf, extension:'png'});
+    ws.addImage(id, {tl:{col:0.15, row:0.2}, ext:{width:104, height:82}});
+  }catch(e){ /* logo is optional (e.g. when opened from disk) */ }
+  ws.mergeCells('C1:J2');
+  Object.assign(ws.getCell('C1'), {value:'SLIC Wealth Plus', font:{name:'Calibri', size:22, bold:true, color:{argb:TEAL_DARK}}, alignment:{vertical:'middle'}});
+  ws.mergeCells('C3:J3');
+  Object.assign(ws.getCell('C3'), {value:'Policy Benefit Illustration', font:{name:'Calibri', size:12, color:{argb:TEAL}}, alignment:{vertical:'middle'}});
+  ws.mergeCells('C4:J4');
+  Object.assign(ws.getCell('C4'), {value:'Prepared on ' + new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}), font:{size:9, italic:true, color:{argb:'FF5D7278'}}, alignment:{vertical:'middle'}});
+  ws.getRow(5).height = 5;
+  for(let c = 1; c <= N; c++) ws.getCell(5, c).fill = fill(GOLD);
+
+  // Section title helper
+  const section = (row, text) => {
+    ws.getRow(row).height = 22;
+    ws.mergeCells(`A${row}:${lastCol}${row}`);
+    Object.assign(ws.getCell(`A${row}`), {value:text, font:{size:12, bold:true, color:{argb:TEAL_DARK}}, alignment:{vertical:'bottom'},
+      border:{bottom:{style:'medium', color:{argb:TEAL}}}});
+  };
+
+  // Customer & plan details
+  section(7, 'Customer & Plan Details');
+  const left = [['Name', inp.name || '—'], ['Gender', inp.gender || '—'], ['Date of Birth', inp.dob || '—'], ['Age', hasAge ? inp.age + ' years' : '—']];
+  const right = [['Sum Assured', inp.sa, MONEY], ['Policy Term', inp.term + ' years'], ['Premium Paying Term', inp.payTerm + ' years'], ['Annual Premium', res.premium, MONEY]];
+  const detail = (row, c1, c2, c3, c4, [label, value, fmt]) => {
+    ws.mergeCells(`${c1}${row}:${c2}${row}`); ws.mergeCells(`${c3}${row}:${c4}${row}`);
+    Object.assign(ws.getCell(`${c1}${row}`), {value:label, font:{bold:true, color:{argb:TEAL_DARK}}, fill:fill(TEAL_SOFT), border:box, alignment:{vertical:'middle', indent:1}});
+    const v = ws.getCell(`${c3}${row}`);
+    Object.assign(v, {value, border:box, alignment:{vertical:'middle', horizontal:'left', indent:1}, font:{size:11}});
+    if(fmt) v.numFmt = fmt;
+    ws.getCell(`${c2}${row}`).border = box; ws.getCell(`${c4}${row}`).border = box;
+  };
+  for(let i = 0; i < 4; i++){
+    const row = 8 + i; ws.getRow(row).height = 20;
+    detail(row, 'A', 'B', 'C', 'D', left[i]);
+    detail(row, 'F', 'G', 'H', 'J', right[i]);
+    ['A','B','C','D','F','G','H','I','J'].forEach(c => ws.getCell(`${c}${row}`).border = box);
   }
-  [6,9].forEach(R => { const cell = ws[XLSX.utils.encode_cell({r:R, c:1})]; if(cell) cell.z = money; });
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Wealth Plus');
-  const safe = inp.name.replace(/[^\w\-]+/g, '_');
-  XLSX.writeFile(wb, 'Wealth_Plus' + (safe ? '_' + safe : '') + '.xlsx');
+
+  // Highlight cards
+  const cards = [
+    ['A', 'C', 'Total Premium Paid', res.paid, false],
+    ['D', 'F', 'Total Guaranteed Additions + Bonus', res.cumGA + res.cumBonus, false],
+    ['G', 'J', `Value at End of Year ${inp.term}`, res.maturity, true]
+  ];
+  ws.getRow(13).height = 18; ws.getRow(14).height = 30;
+  cards.forEach(([a, b, label, val, main]) => {
+    ws.mergeCells(`${a}13:${b}13`); ws.mergeCells(`${a}14:${b}14`);
+    const bg = main ? TEAL : GOLD_SOFT, fg = main ? WHITE : TEAL_DARK;
+    Object.assign(ws.getCell(`${a}13`), {value:label, fill:fill(bg), font:{size:9, bold:true, color:{argb: main ? 'FFD9F1F3' : 'FF8A6200'}}, alignment:{horizontal:'center', vertical:'bottom'}});
+    Object.assign(ws.getCell(`${a}14`), {value:val, numFmt:MONEY, fill:fill(bg), font:{size: main ? 16 : 14, bold:true, color:{argb:fg}}, alignment:{horizontal:'center', vertical:'middle'}});
+  });
+
+  // Year-by-year table
+  section(16, 'Year-by-Year Illustration');
+  const headers = ['Year', hasAge ? 'Age' : 'Policy Year', 'Premium', 'Total Paid', 'Guaranteed Addition', 'Bonus', 'Added This Year', 'Total Added', 'Customer Value', 'Death Benefit'];
+  const hr = ws.getRow(17); hr.height = 32;
+  headers.forEach((h, i) => Object.assign(hr.getCell(i + 1), {value:h, fill:fill(TEAL_DARK), font:{bold:true, color:{argb:WHITE}, size:10},
+    alignment:{horizontal:'center', vertical:'middle', wrapText:true}, border:box}));
+
+  let rowNo = 18;
+  res.rows.forEach((r, idx) => {
+    const row = ws.getRow(rowNo++); row.height = 18;
+    const vals = [r.calYear, hasAge ? r.age : r.y, r.prem || null, r.paid, r.ga, r.bonus, r.added, r.totalAdded, r.value, r.death];
+    vals.forEach((v, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = (i === 2 && !v) ? '—' : v;
+      cell.border = box;
+      if(i >= 2 && typeof cell.value === 'number') cell.numFmt = '#,##0.00';
+      cell.alignment = {horizontal: i < 2 || i === 2 && !v ? 'center' : 'right', vertical:'middle'};
+      if(idx % 2) cell.fill = fill(ZEBRA);
+      if(i === 8) cell.font = {bold:true, color:{argb:TEAL}};
+    });
+    if([6, 11, 16].includes(r.y)) for(let c = 1; c <= N; c++) ws.getCell(row.number, c).border = {...box, top:{style:'medium', color:{argb:GOLD}}};
+  });
+  const tot = ws.getRow(rowNo); tot.height = 22;
+  ws.mergeCells(`A${rowNo}:B${rowNo}`);
+  const totVals = [null, null, res.paid, res.paid, res.cumGA, res.cumBonus, res.cumGA + res.cumBonus, res.cumGA + res.cumBonus, res.maturity, null];
+  for(let c = 1; c <= N; c++){
+    const cell = tot.getCell(c);
+    if(totVals[c - 1] !== null){ cell.value = totVals[c - 1]; cell.numFmt = '#,##0.00'; }
+    Object.assign(cell, {fill:fill(GOLD), font:{bold:true, color:{argb:'FF3B2A00'}}, border:box, alignment:{horizontal: c <= 2 ? 'center' : 'right', vertical:'middle'}});
+  }
+  tot.getCell(1).value = 'TOTAL';
+
+  // Notes
+  const notes = [
+    'Guaranteed Addition: 5% of the Sum Assured is added every year for the full policy term.',
+    'Death Benefit: 125% of the increased Sum Assured plus bonus declared up to that year.',
+    'Bonus is illustrative, based on the bonus rates currently declared, and is guaranteed once declared. This is not a policy document.'
+  ];
+  let nr = rowNo + 2;
+  notes.forEach(t => {
+    ws.mergeCells(`A${nr}:${lastCol}${nr}`);
+    Object.assign(ws.getCell(`A${nr}`), {value:'•  ' + t, font:{size:9, color:{argb:'FF5D7278'}}, alignment:{wrapText:true, vertical:'top'}});
+    nr++;
+  });
+  ws.mergeCells(`A${nr + 1}:${lastCol}${nr + 1}`);
+  Object.assign(ws.getCell(`A${nr + 1}`), {value:'Powered by Thilina', font:{size:9, italic:true, color:{argb:TEAL}}, alignment:{horizontal:'right'}});
+  ws.pageSetup.printArea = `A1:${lastCol}${nr + 1}`;
+  return wb;
+}
+
+$('excelBtn').addEventListener('click', async () => {
+  if(!last) return;
+  if(typeof ExcelJS === 'undefined'){ alert('Excel library failed to load. Check your internet connection and reload.'); return; }
+  const btn = $('excelBtn'); btn.disabled = true;
+  try{
+    const wb = await buildWorkbook(last.inp, last.res);
+    const blob = new Blob([await wb.xlsx.writeBuffer()], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const safe = last.inp.name.replace(/[^\w\-]+/g, '_');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Wealth_Plus' + (safe ? '_' + safe : '') + '.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }catch(e){
+    alert('Could not create the Excel file: ' + e.message);
+  }finally{ btn.disabled = false; }
 });
 </script>
 </body>
