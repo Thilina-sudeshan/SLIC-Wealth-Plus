@@ -87,7 +87,7 @@
   @media (max-width:560px){ .chart-wrap{height:300px;} }
 
   .table-scroll{overflow-x:auto; border-radius:12px; border:1px solid var(--border); -webkit-overflow-scrolling:touch;}
-  .result-table{width:100%; border-collapse:collapse; font-size:.84rem; min-width:900px;}
+  .result-table{width:100%; border-collapse:collapse; font-size:.84rem; min-width:780px;}
   .result-table th, .result-table td{padding:9px 10px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; border-bottom:1px solid var(--border);}
   .result-table th:first-child, .result-table td:first-child{text-align:center;}
   .result-table thead th{background:var(--teal-dark); color:#fff; font-weight:600; white-space:normal; font-size:.78rem; position:sticky; top:0;}
@@ -174,9 +174,9 @@
       <div class="table-scroll">
         <table class="result-table">
           <thead><tr>
-            <th>Policy Year</th><th>Year</th><th>Age</th>
+            <th>Year</th><th id="col2Head">Age</th>
             <th>Premium (Rs.)</th><th>Total Paid (Rs.)</th>
-            <th>Guaranteed Addition (Rs.)</th><th>Bonus Rate / 1,000</th><th>Bonus (Rs.)</th>
+            <th>Guaranteed Addition (Rs.)</th><th>Bonus (Rs.)</th>
             <th>Added This Year (Rs.)</th><th>Total Added (Rs.)</th>
             <th>Customer Value (Rs.)</th>
             <th>Death Benefit (Rs.)</th>
@@ -274,21 +274,24 @@ $('calcBtn').addEventListener('click', () => {
     <div class="stat"><div class="k">Total GA + Bonus</div><div class="v">Rs. ${fmt0(res.cumGA + res.cumBonus)}</div></div>
     <div class="stat big"><div class="k">Value at Year ${inp.term}</div><div class="v">Rs. ${fmt0(res.maturity)}</div></div>`;
 
+  // Show Year + Age; if no age was entered, show Year + Policy Year instead
+  const hasAge = inp.age !== '';
+  $('col2Head').textContent = hasAge ? 'Age' : 'Policy Year';
   const body = $('resultBody');
   body.innerHTML = '';
   res.rows.forEach(r => {
     const tr = document.createElement('tr');
     if([6,11,16].includes(r.y)) tr.className = 'band-start';
-    tr.innerHTML = `<td>${r.y}</td><td>${r.calYear}</td><td>${r.age}</td>
+    tr.innerHTML = `<td>${r.calYear}</td><td>${hasAge ? r.age : r.y}</td>
       <td>${r.prem ? fmt(r.prem) : '&mdash;'}</td><td>${fmt(r.paid)}</td>
-      <td>${fmt(r.ga)}</td><td>${r.rate}</td><td>${fmt(r.bonus)}</td>
+      <td>${fmt(r.ga)}</td><td>${fmt(r.bonus)}</td>
       <td>${fmt(r.added)}</td><td>${fmt(r.totalAdded)}</td><td class="value">${fmt(r.value)}</td><td>${fmt(r.death)}</td>`;
     body.appendChild(tr);
   });
   const tot = document.createElement('tr');
   tot.className = 'total-row';
-  tot.innerHTML = `<td colspan="3">Total</td><td>${fmt(res.paid)}</td><td>${fmt(res.paid)}</td>
-    <td>${fmt(res.cumGA)}</td><td></td><td>${fmt(res.cumBonus)}</td>
+  tot.innerHTML = `<td colspan="2">Total</td><td>${fmt(res.paid)}</td><td>${fmt(res.paid)}</td>
+    <td>${fmt(res.cumGA)}</td><td>${fmt(res.cumBonus)}</td>
     <td>${fmt(res.cumGA + res.cumBonus)}</td><td>${fmt(res.cumGA + res.cumBonus)}</td><td>${fmt(res.maturity)}</td><td></td>`;
   body.appendChild(tot);
 
@@ -342,20 +345,19 @@ $('excelBtn').addEventListener('click', () => {
     [],
     ['Name', inp.name], ['Gender', inp.gender], ['Date of Birth', inp.dob], ['Age', inp.age],
     ['Sum Assured (Rs.)', inp.sa], ['Term (years)', inp.term], ['Paying Term (years)', inp.payTerm],
-    ['Annual Premium (Rs.)', res.premium], ['Guaranteed Addition %', inp.gaPct],
-    ['Bonus rates / 1,000 (yr 1-5, 6-10, 11-15, 16+)', inp.rates.join(', ')],
+    ['Annual Premium (Rs.)', res.premium],
     [],
-    ['Policy Year','Year','Age','Premium (Rs.)','Total Paid (Rs.)','Guaranteed Addition (Rs.)','Bonus Rate / 1,000','Bonus (Rs.)','Added This Year (Rs.)','Total Added (Rs.)','Customer Value (Rs.)','Death Benefit (Rs.)']
+    ['Year', hasAge ? 'Age' : 'Policy Year','Premium (Rs.)','Total Paid (Rs.)','Guaranteed Addition (Rs.)','Bonus (Rs.)','Added This Year (Rs.)','Total Added (Rs.)','Customer Value (Rs.)','Death Benefit (Rs.)']
   ];
   const headerRow = aoa.length;
-  res.rows.forEach(r => aoa.push([r.y, r.calYear, r.age, r.prem, r.paid, r.ga, r.rate, r.bonus, r.added, r.totalAdded, r.value, r.death]));
-  aoa.push(['Total','','',res.paid,res.paid,res.cumGA,'',res.cumBonus,res.cumGA+res.cumBonus,res.cumGA+res.cumBonus,res.maturity]);
+  res.rows.forEach(r => aoa.push([r.calYear, hasAge ? r.age : r.y, r.prem, r.paid, r.ga, r.bonus, r.added, r.totalAdded, r.value, r.death]));
+  aoa.push(['Total','',res.paid,res.paid,res.cumGA,res.cumBonus,res.cumGA+res.cumBonus,res.cumGA+res.cumBonus,res.maturity]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:12},{wch:8},{wch:6},{wch:16},{wch:18},{wch:22},{wch:16},{wch:16},{wch:20},{wch:18},{wch:20},{wch:20}];
+  ws['!cols'] = [{wch:8},{wch:11},{wch:16},{wch:18},{wch:22},{wch:16},{wch:20},{wch:18},{wch:20},{wch:20}];
   const money = '#,##0.00';
   for(let R = headerRow; R < aoa.length; R++){
-    [3,4,5,7,8,9,10,11].forEach(C => { const cell = ws[XLSX.utils.encode_cell({r:R, c:C})]; if(cell && cell.t === 'n') cell.z = money; });
+    [2,3,4,5,6,7,8,9].forEach(C => { const cell = ws[XLSX.utils.encode_cell({r:R, c:C})]; if(cell && cell.t === 'n') cell.z = money; });
   }
   [6,9].forEach(R => { const cell = ws[XLSX.utils.encode_cell({r:R, c:1})]; if(cell) cell.z = money; });
   const wb = XLSX.utils.book_new();
