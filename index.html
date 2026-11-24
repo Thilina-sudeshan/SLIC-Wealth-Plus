@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLIC Wealth Plus Calculator</title>
+<style>
+  :root{
+    --bg:#eef4f5; --card:#ffffff; --text:#13262b; --muted:#5d7278; --border:#d6e3e6;
+    --teal:#00838f; --teal-dark:#05515a; --teal-soft:#e0f2f3; --gold:#f2b318; --gold-dark:#8a6200; --gold-soft:#fff5da;
+    --field:#f6fafa; --shadow:0 1px 2px rgba(5,81,90,.06), 0 6px 20px rgba(5,81,90,.07);
+    --sans:'Segoe UI',-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0a1517; --card:#112226; --text:#e4f0f1; --muted:#90a8ad; --border:#1f3a3f;
+      --teal:#2ec4cf; --teal-dark:#7fdde4; --teal-soft:#123438; --gold:#f2b318; --gold-dark:#f5c84a; --gold-soft:#2a230f;
+      --field:#0d1c1f; --shadow:none;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:var(--sans); background:var(--bg); color:var(--text); line-height:1.4;}
+
+  /* Header */
+  .hero{background:linear-gradient(120deg,#05515a 0%,#00838f 60%,#00a5b0 100%); color:#fff; padding:28px 20px 70px; position:relative;}
+  .hero::after{content:""; position:absolute; left:0; right:0; bottom:0; height:5px; background:var(--gold);}
+  .hero-inner{max-width:1180px; margin:0 auto; display:flex; align-items:center; gap:16px;}
+  .logo{background:#fff; border-radius:14px; padding:6px; flex:none; box-shadow:0 4px 14px rgba(0,0,0,.18); line-height:0;}
+  .logo img{display:block; height:72px; width:auto; border-radius:8px;}
+  @media (max-width:560px){ .logo img{height:56px;} .hero h1{font-size:1.35rem;} .hero p{display:none;} }
+  .hero small{display:block; font-size:.75rem; letter-spacing:.14em; text-transform:uppercase; opacity:.8; font-weight:600;}
+  .hero h1{margin:2px 0 0; font-size:1.7rem; font-weight:700; letter-spacing:.01em;}
+  .hero p{margin:4px 0 0; font-size:.9rem; opacity:.85;}
+
+  /* Layout */
+  .layout{max-width:1180px; margin:-48px auto 0; padding:0 16px 40px; display:grid; grid-template-columns:370px 1fr; gap:20px; align-items:start; position:relative;}
+  @media (max-width:960px){ .layout{grid-template-columns:1fr;} }
+  .layout > *, #results > *{min-width:0;}
+  .panel{background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow); padding:20px;}
+  .form-panel{position:sticky; top:16px;}
+  @media (max-width:960px){ .form-panel{position:static;} }
+  .step{display:flex; align-items:center; gap:10px; margin:0 0 14px; font-size:.95rem; font-weight:700; color:var(--teal-dark);}
+  .step span{width:24px; height:24px; border-radius:50%; background:var(--teal); color:#fff; display:grid; place-items:center; font-size:.78rem;}
+  .step + .fields{margin-bottom:22px;}
+  .fields{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .fields .full{grid-column:1/-1;}
+  @media (max-width:380px){ .fields{grid-template-columns:1fr;} }
+  label{display:block; font-size:.76rem; font-weight:600; color:var(--muted); margin-bottom:5px;}
+  input, select{
+    width:100%; padding:11px 12px; border:1.5px solid var(--border); border-radius:10px;
+    font-size:1rem; font-family:var(--sans); background:var(--field); color:var(--text); transition:border-color .15s, background .15s;
+  }
+  input:focus, select:focus{outline:none; border-color:var(--teal); background:var(--card);}
+  button:focus-visible{outline:3px solid var(--gold); outline-offset:2px;}
+  .hint{font-size:.76rem; color:var(--muted); margin:8px 0 0; line-height:1.5;}
+  button{font-family:var(--sans); cursor:pointer; border:none;}
+  #calcBtn{width:100%; padding:14px; border-radius:12px; background:var(--gold); color:#3b2a00; font-size:1rem; font-weight:700; letter-spacing:.02em; margin-top:4px;}
+  #calcBtn:hover{filter:brightness(1.05);}
+  #excelBtn{display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border-radius:10px; background:var(--teal); color:#fff; font-weight:600; font-size:.88rem;}
+  #excelBtn:hover{filter:brightness(1.08);}
+
+  /* Empty state */
+  .empty{text-align:center; padding:60px 24px; color:var(--muted);}
+  .empty .ring{width:72px; height:72px; margin:0 auto 14px; border-radius:50%; border:6px solid var(--teal-soft); border-top-color:var(--gold);}
+  .empty h3{margin:0 0 6px; color:var(--text); font-size:1.05rem;}
+  .empty p{margin:0; font-size:.88rem;}
+
+  /* Results */
+  #results{display:grid; gap:20px;}
+  h2{font-size:1rem; font-weight:700; margin:0; color:var(--teal-dark);}
+  .results-header{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;}
+  .summary{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; font-size:.84rem;}
+  .summary > div{background:var(--teal-soft); border-radius:999px; padding:6px 12px;}
+  .summary .k{color:var(--muted); font-weight:600;}
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px;}
+  @media (max-width:560px){ .stats{grid-template-columns:1fr 1fr;} }
+  .stat{border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--field);}
+  .stat .k{font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600;}
+  .stat .v{font-size:1.15rem; font-weight:700; margin-top:4px; font-variant-numeric:tabular-nums; word-break:break-word;}
+  .stat.big{grid-column:1/-1; order:-1; border:none; color:#fff; padding:20px;
+    background:linear-gradient(120deg,#05515a 0%,#00838f 70%,#00a5b0 100%); position:relative; overflow:hidden;}
+  .stat.big::after{content:""; position:absolute; right:-30px; top:-30px; width:140px; height:140px; border-radius:50%; border:18px solid rgba(242,179,24,.35);}
+  .stat.big .k{color:rgba(255,255,255,.8);}
+  .stat.big .v{font-size:2rem; color:#fff;}
+  @media (max-width:560px){ .stat.big .v{font-size:1.6rem;} }
+  .chart-wrap{position:relative; height:360px;}
+  @media (max-width:560px){ .chart-wrap{height:300px;} }
+
+  .table-scroll{overflow-x:auto; border-radius:12px; border:1px solid var(--border); -webkit-overflow-scrolling:touch;}
+  .result-table{width:100%; border-collapse:collapse; font-size:.84rem; min-width:900px;}
+  .result-table th, .result-table td{padding:9px 10px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; border-bottom:1px solid var(--border);}
+  .result-table th:first-child, .result-table td:first-child{text-align:center;}
+  .result-table thead th{background:var(--teal-dark); color:#fff; font-weight:600; white-space:normal; font-size:.78rem; position:sticky; top:0;}
+  @media (prefers-color-scheme: dark){ .result-table thead th{background:#0b3a40;} }
+  .result-table tbody tr:nth-child(even){background:var(--field);}
+  .result-table tbody tr:hover{background:var(--teal-soft);}
+  .result-table td.value{font-weight:700; color:var(--teal);}
+  .result-table tr.band-start td{border-top:2px solid var(--gold);}
+  .total-row td{font-weight:700; background:var(--gold-soft) !important; color:var(--gold-dark); border-bottom:none;}
+  .footer{text-align:center; font-size:.78rem; color:var(--muted); padding:0 0 24px;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<header class="hero">
+  <div class="hero-inner">
+    <div class="logo"><img src="slic-logo.png" alt="Sri Lanka Insurance Life"></div>
+    <div>
+      <small>Life Insurance Plan</small>
+      <h1>SLIC Wealth Plus Calculator</h1>
+      <p>See how the policy value grows year by year, then download it as Excel.</p>
+    </div>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="panel form-panel">
+    <div class="step"><span>1</span>Customer details</div>
+    <div class="fields">
+      <div class="full"><label for="name">Name</label><input type="text" id="name" placeholder="Customer name" autocomplete="off"></div>
+      <div><label for="dob">Date of birth</label><input type="date" id="dob"></div>
+      <div><label for="age">Age</label><input type="number" id="age" min="0" step="1" placeholder="Auto" inputmode="numeric"></div>
+      <div class="full"><label for="gender">Gender</label>
+        <select id="gender"><option value="">Select</option><option>Male</option><option>Female</option></select></div>
+    </div>
+
+    <div class="step"><span>2</span>Plan details</div>
+    <div class="fields">
+      <div class="full"><label for="sumAssured">Sum assured (Rs.)</label><input type="number" id="sumAssured" min="0" step="1000" value="2500000" inputmode="numeric"></div>
+      <div><label for="term">Term (years)</label><input type="number" id="term" min="1" max="60" step="1" value="20" inputmode="numeric"></div>
+      <div><label for="payTerm">Paying term (years)</label><input type="number" id="payTerm" min="1" max="60" step="1" value="5" inputmode="numeric"></div>
+      <div><label for="premium">Annual premium (Rs.)</label><input type="number" id="premium" min="0" step="0.01" placeholder="e.g. 749699" inputmode="decimal"></div>
+      <div><label for="startYear">Start year</label><input type="number" id="startYear" step="1" inputmode="numeric"></div>
+      <p class="hint full" style="margin-top:0">Copy the yearly premium from the SLIC quotation &mdash; it depends on age and gender.</p>
+    </div>
+
+    <!-- Rates are hidden from users; edit the values below if SLIC revises them -->
+    <div hidden>
+      <input type="number" id="ga" value="5">
+      <input type="number" id="r1" value="75">
+      <input type="number" id="r2" value="95">
+      <input type="number" id="r3" value="125">
+      <input type="number" id="r4" value="190">
+    </div>
+
+    <button type="button" id="calcBtn">Calculate</button>
+  </aside>
+
+  <section>
+    <div class="panel empty" id="emptyState">
+      <div class="ring" aria-hidden="true"></div>
+      <h3>Results will show here</h3>
+      <p>Fill in the customer and plan details, then press Calculate.</p>
+    </div>
+
+  <div id="results" style="display:none;">
+    <div class="panel">
+      <div class="results-header">
+        <h2>Summary</h2>
+        <button type="button" id="excelBtn">&#8681; Download Excel</button>
+      </div>
+      <div class="summary" id="summary"></div>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="panel">
+      <div class="results-header"><h2>Growth chart</h2></div>
+      <div class="chart-wrap"><canvas id="chart" aria-label="Policy value by year"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <div class="results-header"><h2>Year-by-year calculation</h2></div>
+      <div class="table-scroll">
+        <table class="result-table">
+          <thead><tr>
+            <th>Policy Year</th><th>Year</th><th>Age</th>
+            <th>Premium (Rs.)</th><th>Total Paid (Rs.)</th>
+            <th>Guaranteed Addition (Rs.)</th><th>Bonus Rate / 1,000</th><th>Bonus (Rs.)</th>
+            <th>Added This Year (Rs.)</th><th>Total Added (Rs.)</th>
+            <th>Customer Value (Rs.)</th>
+            <th>Death Benefit (Rs.)</th>
+          </tr></thead>
+          <tbody id="resultBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  </section>
+</main>
+
+<p class="footer">Powered by Thilina</p>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmt0 = n => n.toLocaleString('en-US', {maximumFractionDigits:0});
+
+$('startYear').value = new Date().getFullYear();
+
+function calcAge(dobStr){
+  if(!dobStr) return '';
+  const dob = new Date(dobStr), now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  if(now.getMonth() < dob.getMonth() || (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate())) age--;
+  return age >= 0 ? age : '';
+}
+$('dob').addEventListener('change', () => { $('age').value = calcAge($('dob').value); });
+
+function bonusRate(year, r){
+  if(year <= 5) return r[0];
+  if(year <= 10) return r[1];
+  if(year <= 15) return r[2];
+  return r[3];
+}
+
+// Core Wealth Plus calculation
+function calculate(inp){
+  const rows = [];
+  const premium = inp.premium;
+  let paid = 0, cumGA = 0, cumBonus = 0;
+  for(let y = 1; y <= inp.term; y++){
+    const prem = y <= inp.payTerm ? premium : 0;
+    paid += prem;
+    const ga = inp.sa * inp.gaPct / 100;
+    const rate = bonusRate(y, inp.rates);
+    const bonus = inp.sa / 1000 * rate;
+    cumGA += ga; cumBonus += bonus;
+    rows.push({
+      y, calYear: inp.startYear + y - 1,
+      age: inp.age === '' ? '' : inp.age + y - 1,
+      prem, paid, ga, rate, bonus,
+      added: ga + bonus, totalAdded: cumGA + cumBonus,
+      cumGA, cumBonus, value: inp.sa + cumGA + cumBonus,
+      death: 1.25 * (inp.sa + cumGA) + cumBonus
+    });
+  }
+  return {rows, premium, paid, cumGA, cumBonus, maturity: inp.sa + cumGA + cumBonus};
+}
+
+let chart = null, last = null;
+
+$('calcBtn').addEventListener('click', () => {
+  const ageRaw = $('age').value;
+  const inp = {
+    name: $('name').value.trim(), gender: $('gender').value, dob: $('dob').value,
+    age: ageRaw === '' ? '' : parseInt(ageRaw, 10),
+    sa: parseFloat($('sumAssured').value), startYear: parseInt($('startYear').value, 10),
+    term: parseInt($('term').value, 10), payTerm: parseInt($('payTerm').value, 10),
+    premium: parseFloat($('premium').value),
+    gaPct: parseFloat($('ga').value) || 0,
+    rates: ['r1','r2','r3','r4'].map(id => parseFloat($(id).value) || 0)
+  };
+  if(!(inp.sa > 0) || !(inp.term > 0) || !(inp.payTerm > 0) || !Number.isFinite(inp.startYear)){
+    alert('Please enter a valid Sum Assured, Term, Paying Term and Start Year.'); return;
+  }
+  if(!(inp.premium > 0)){ alert('Please enter the Annual Premium from the SLIC quotation.'); return; }
+  if(inp.payTerm > inp.term){ alert('Paying Term cannot be longer than the Term.'); return; }
+
+  const res = calculate(inp);
+  last = {inp, res};
+
+  $('summary').innerHTML = `
+    <div><span class="k">Name:</span> ${esc(inp.name) || '&mdash;'}</div>
+    <div><span class="k">Gender:</span> ${inp.gender || '&mdash;'}</div>
+    <div><span class="k">Date of Birth:</span> ${inp.dob || '&mdash;'}</div>
+    <div><span class="k">Age:</span> ${inp.age === '' ? '&mdash;' : inp.age}</div>
+    <div><span class="k">Sum Assured:</span> Rs. ${fmt(inp.sa)}</div>
+    <div><span class="k">Term / Paying Term:</span> ${inp.term} / ${inp.payTerm} years</div>`;
+
+  $('stats').innerHTML = `
+    <div class="stat"><div class="k">Annual Premium</div><div class="v">Rs. ${fmt0(res.premium)}</div></div>
+    <div class="stat"><div class="k">Total Paid</div><div class="v">Rs. ${fmt0(res.paid)}</div></div>
+    <div class="stat"><div class="k">Total GA + Bonus</div><div class="v">Rs. ${fmt0(res.cumGA + res.cumBonus)}</div></div>
+    <div class="stat big"><div class="k">Value at Year ${inp.term}</div><div class="v">Rs. ${fmt0(res.maturity)}</div></div>`;
+
+  const body = $('resultBody');
+  body.innerHTML = '';
+  res.rows.forEach(r => {
+    const tr = document.createElement('tr');
+    if([6,11,16].includes(r.y)) tr.className = 'band-start';
+    tr.innerHTML = `<td>${r.y}</td><td>${r.calYear}</td><td>${r.age}</td>
+      <td>${r.prem ? fmt(r.prem) : '&mdash;'}</td><td>${fmt(r.paid)}</td>
+      <td>${fmt(r.ga)}</td><td>${r.rate}</td><td>${fmt(r.bonus)}</td>
+      <td>${fmt(r.added)}</td><td>${fmt(r.totalAdded)}</td><td class="value">${fmt(r.value)}</td><td>${fmt(r.death)}</td>`;
+    body.appendChild(tr);
+  });
+  const tot = document.createElement('tr');
+  tot.className = 'total-row';
+  tot.innerHTML = `<td colspan="3">Total</td><td>${fmt(res.paid)}</td><td>${fmt(res.paid)}</td>
+    <td>${fmt(res.cumGA)}</td><td></td><td>${fmt(res.cumBonus)}</td>
+    <td>${fmt(res.cumGA + res.cumBonus)}</td><td>${fmt(res.cumGA + res.cumBonus)}</td><td>${fmt(res.maturity)}</td><td></td>`;
+  body.appendChild(tot);
+
+  $('emptyState').style.display = 'none';
+  $('results').style.display = 'grid';
+  drawChart(inp, res);
+  $('results').scrollIntoView({behavior:'smooth'});
+});
+
+function esc(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function drawChart(inp, res){
+  if(typeof Chart === 'undefined') return;
+  const css = getComputedStyle(document.documentElement);
+  const muted = css.getPropertyValue('--muted').trim(), grid = css.getPropertyValue('--border').trim();
+  if(chart) chart.destroy();
+  chart = new Chart($('chart'), {
+    data: {
+      labels: res.rows.map(r => 'Y' + r.y),
+      datasets: [
+        {type:'bar', label:'Sum Assured', data: res.rows.map(() => inp.sa), backgroundColor:'#05515a', borderRadius:3, stack:'v'},
+        {type:'bar', label:'Guaranteed Additions', data: res.rows.map(r => r.cumGA), backgroundColor:'#00a5b0', borderRadius:3, stack:'v'},
+        {type:'bar', label:'Bonus', data: res.rows.map(r => r.cumBonus), backgroundColor:'#f2b318', borderRadius:3, stack:'v'},
+        {type:'line', label:'Total Paid', data: res.rows.map(r => r.paid), borderColor:'#d64545', backgroundColor:'#d64545', borderWidth:2, pointRadius:2, tension:0, order:-1}
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{position:'bottom', labels:{color:muted, boxWidth:12}},
+        tooltip:{callbacks:{
+          label: c => `${c.dataset.label}: Rs. ${fmt0(c.parsed.y)}`,
+          footer: items => { const r = res.rows[items[0].dataIndex]; return `Customer value: Rs. ${fmt0(r.value)}`; }
+        }}
+      },
+      scales:{
+        x:{stacked:true, ticks:{color:muted}, grid:{display:false}},
+        y:{stacked:true, ticks:{color:muted, callback: v => v >= 1e6 ? (v/1e6) + 'M' : fmt0(v)}, grid:{color:grid}}
+      }
+    }
+  });
+}
+
+$('excelBtn').addEventListener('click', () => {
+  if(!last) return;
+  if(typeof XLSX === 'undefined'){ alert('Excel library failed to load. Check your internet connection and reload.'); return; }
+  const {inp, res} = last;
+  const aoa = [
+    ['SLIC Wealth Plus - Calculation'],
+    [],
+    ['Name', inp.name], ['Gender', inp.gender], ['Date of Birth', inp.dob], ['Age', inp.age],
+    ['Sum Assured (Rs.)', inp.sa], ['Term (years)', inp.term], ['Paying Term (years)', inp.payTerm],
+    ['Annual Premium (Rs.)', res.premium], ['Guaranteed Addition %', inp.gaPct],
+    ['Bonus rates / 1,000 (yr 1-5, 6-10, 11-15, 16+)', inp.rates.join(', ')],
+    [],
+    ['Policy Year','Year','Age','Premium (Rs.)','Total Paid (Rs.)','Guaranteed Addition (Rs.)','Bonus Rate / 1,000','Bonus (Rs.)','Added This Year (Rs.)','Total Added (Rs.)','Customer Value (Rs.)','Death Benefit (Rs.)']
+  ];
+  const headerRow = aoa.length;
+  res.rows.forEach(r => aoa.push([r.y, r.calYear, r.age, r.prem, r.paid, r.ga, r.rate, r.bonus, r.added, r.totalAdded, r.value, r.death]));
+  aoa.push(['Total','','',res.paid,res.paid,res.cumGA,'',res.cumBonus,res.cumGA+res.cumBonus,res.cumGA+res.cumBonus,res.maturity]);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:12},{wch:8},{wch:6},{wch:16},{wch:18},{wch:22},{wch:16},{wch:16},{wch:20},{wch:18},{wch:20},{wch:20}];
+  const money = '#,##0.00';
+  for(let R = headerRow; R < aoa.length; R++){
+    [3,4,5,7,8,9,10,11].forEach(C => { const cell = ws[XLSX.utils.encode_cell({r:R, c:C})]; if(cell && cell.t === 'n') cell.z = money; });
+  }
+  [6,9].forEach(R => { const cell = ws[XLSX.utils.encode_cell({r:R, c:1})]; if(cell) cell.z = money; });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Wealth Plus');
+  const safe = inp.name.replace(/[^\w\-]+/g, '_');
+  XLSX.writeFile(wb, 'Wealth_Plus' + (safe ? '_' + safe : '') + '.xlsx');
+});
+</script>
+</body>
+</html>
