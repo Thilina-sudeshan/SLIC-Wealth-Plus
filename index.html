@@ -56,8 +56,12 @@
   button{font-family:var(--sans); cursor:pointer; border:none;}
   #calcBtn{width:100%; padding:14px; border-radius:12px; background:var(--gold); color:#3b2a00; font-size:1rem; font-weight:700; letter-spacing:.02em; margin-top:4px;}
   #calcBtn:hover{filter:brightness(1.05);}
-  #excelBtn{display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border-radius:10px; background:var(--teal); color:#fff; font-weight:600; font-size:.88rem;}
-  #excelBtn:hover{filter:brightness(1.08);}
+  .download{display:flex; gap:8px; align-items:stretch;}
+  .download select{width:auto; padding:9px 34px 9px 12px; font-size:.88rem; font-weight:600;}
+  #dlBtn{display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border-radius:10px; background:var(--teal); color:#fff; font-weight:600; font-size:.88rem; white-space:nowrap;}
+  #dlBtn:hover{filter:brightness(1.08);}
+  #dlBtn:disabled{opacity:.6; cursor:wait;}
+  .sr-only{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;}
 
   /* Empty state */
   .empty{text-align:center; padding:60px 24px; color:var(--muted);}
@@ -101,6 +105,8 @@
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 <header class="hero">
@@ -127,11 +133,11 @@
 
     <div class="step"><span>2</span>Plan details</div>
     <div class="fields">
-      <div class="full"><label for="sumAssured">Sum assured (Rs.)</label><input type="number" id="sumAssured" min="0" step="1000" value="2500000" inputmode="numeric"></div>
-      <div><label for="term">Term (years)</label><input type="number" id="term" min="1" max="60" step="1" value="20" inputmode="numeric"></div>
-      <div><label for="payTerm">Paying term (years)</label><input type="number" id="payTerm" min="1" max="60" step="1" value="5" inputmode="numeric"></div>
+      <div class="full"><label for="sumAssured">Sum assured (Rs.)</label><input type="number" id="sumAssured" min="0" step="1000" placeholder="e.g. 2500000" inputmode="numeric"></div>
+      <div><label for="term">Term (years)</label><input type="number" id="term" min="1" max="60" step="1" placeholder="e.g. 20" inputmode="numeric"></div>
+      <div><label for="payTerm">Paying term (years)</label><input type="number" id="payTerm" min="1" max="60" step="1" placeholder="e.g. 5" inputmode="numeric"></div>
       <div><label for="premium">Annual premium (Rs.)</label><input type="number" id="premium" min="0" step="0.01" placeholder="e.g. 749699" inputmode="decimal"></div>
-      <div><label for="startYear">Start year</label><input type="number" id="startYear" step="1" inputmode="numeric"></div>
+      <div><label for="startYear">Start year</label><input type="number" id="startYear" step="1" placeholder="e.g. 2026" inputmode="numeric"></div>
       <p class="hint full" style="margin-top:0">Copy the yearly premium from the SLIC quotation &mdash; it depends on age and gender.</p>
     </div>
 
@@ -158,7 +164,14 @@
     <div class="panel">
       <div class="results-header">
         <h2>Summary</h2>
-        <button type="button" id="excelBtn">&#8681; Download Excel</button>
+        <div class="download">
+          <label for="dlFormat" class="sr-only">File type</label>
+          <select id="dlFormat" aria-label="File type">
+            <option value="pdf">PDF</option>
+            <option value="xlsx">Excel (.xlsx)</option>
+          </select>
+          <button type="button" id="dlBtn">&#8681; Download</button>
+        </div>
       </div>
       <div class="summary" id="summary"></div>
       <div class="stats" id="stats"></div>
@@ -196,7 +209,7 @@ const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 const fmt0 = n => n.toLocaleString('en-US', {maximumFractionDigits:0});
 
-$('startYear').value = new Date().getFullYear();
+$('startYear').placeholder = 'e.g. ' + new Date().getFullYear();
 
 // SLIC uses "age nearest birthday": completed years, +1 once 6 months have passed since the last birthday
 function calcAge(dobStr, today){
@@ -256,8 +269,9 @@ $('calcBtn').addEventListener('click', () => {
     gaPct: parseFloat($('ga').value) || 0,
     rates: ['r1','r2','r3','r4'].map(id => parseFloat($(id).value) || 0)
   };
-  if(!(inp.sa > 0) || !(inp.term > 0) || !(inp.payTerm > 0) || !Number.isFinite(inp.startYear)){
-    alert('Please enter a valid Sum Assured, Term, Paying Term and Start Year.'); return;
+  if(!Number.isFinite(inp.startYear)) inp.startYear = new Date().getFullYear(); // start year is optional
+  if(!(inp.sa > 0) || !(inp.term > 0) || !(inp.payTerm > 0)){
+    alert('Please enter the Sum Assured, Term and Paying Term.'); return;
   }
   if(!(inp.premium > 0)){ alert('Please enter the Annual Premium from the SLIC quotation.'); return; }
   if(inp.payTerm > inp.term){ alert('Paying Term cannot be longer than the Term.'); return; }
@@ -466,21 +480,125 @@ async function buildWorkbook(inp, res){
   return wb;
 }
 
-$('excelBtn').addEventListener('click', async () => {
-  if(!last) return;
-  if(typeof ExcelJS === 'undefined'){ alert('Excel library failed to load. Check your internet connection and reload.'); return; }
-  const btn = $('excelBtn'); btn.disabled = true;
+async function logoDataUrl(){
   try{
-    const wb = await buildWorkbook(last.inp, last.res);
-    const blob = new Blob([await wb.xlsx.writeBuffer()], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const safe = last.inp.name.replace(/[^\w\-]+/g, '_');
+    const blob = await (await fetch('slic-logo.png')).blob();
+    return await new Promise((ok, fail) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = fail; r.readAsDataURL(blob); });
+  }catch(e){ return null; }
+}
+
+// Styled PDF export (jsPDF + autoTable), A4 portrait
+async function buildPdf(inp, res){
+  const hasAge = inp.age !== '';
+  const TEAL = [0,131,143], TEAL_DARK = [5,81,90], TEAL_SOFT = [224,242,243], GOLD = [242,179,24], GOLD_SOFT = [255,245,218], LINE = [214,227,230], MUTED = [93,114,120];
+  const doc = new jspdf.jsPDF({unit:'mm', format:'a4', orientation:'portrait'});
+  const L = 12, W = 186;
+  const rs = n => 'Rs. ' + fmt(n);
+
+  // Header
+  const logo = await logoDataUrl();
+  if(logo) doc.addImage(logo, 'PNG', L, 10, 27, 21.4);
+  const tx = logo ? L + 33 : L;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...TEAL_DARK);
+  doc.text('SLIC Wealth Plus', tx, 19);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(...TEAL);
+  doc.text('Policy Benefit Illustration', tx, 25.5);
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...MUTED);
+  doc.text('Prepared on ' + new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}), tx, 30.5);
+  doc.setFillColor(...GOLD); doc.rect(L, 35, W, 1.4, 'F');
+
+  const section = (y, text) => {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...TEAL_DARK);
+    doc.text(text, L, y);
+    doc.setDrawColor(...TEAL); doc.setLineWidth(0.5); doc.line(L, y + 1.6, L + W, y + 1.6);
+  };
+
+  // Customer & plan details
+  section(44, 'Customer & Plan Details');
+  doc.autoTable({
+    startY: 47, margin:{left:L, right:L}, theme:'grid',
+    styles:{fontSize:9, cellPadding:2, lineColor:LINE, lineWidth:0.2, textColor:[19,38,43]},
+    columnStyles:{0:{cellWidth:30, fillColor:TEAL_SOFT, fontStyle:'bold', textColor:TEAL_DARK}, 1:{cellWidth:63},
+                  2:{cellWidth:42, fillColor:TEAL_SOFT, fontStyle:'bold', textColor:TEAL_DARK}, 3:{cellWidth:51}},
+    body:[
+      ['Name', inp.name || '-', 'Sum Assured', rs(inp.sa)],
+      ['Gender', inp.gender || '-', 'Policy Term', inp.term + ' years'],
+      ['Date of Birth', inp.dob || '-', 'Premium Paying Term', inp.payTerm + ' years'],
+      ['Age', hasAge ? inp.age + ' years' : '-', 'Annual Premium', rs(res.premium)]
+    ]
+  });
+
+  // Highlight cards
+  let y = doc.lastAutoTable.finalY + 5;
+  const cards = [['Total Premium Paid', res.paid, 58, false], ['Total Guaranteed Additions + Bonus', res.cumGA + res.cumBonus, 62, false], [`Value at End of Year ${inp.term}`, res.maturity, 66, true]];
+  let x = L;
+  cards.forEach(([label, val, w, main]) => {
+    doc.setFillColor(...(main ? TEAL : GOLD_SOFT)); doc.rect(x, y, w, 17, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...(main ? [217,241,243] : [138,98,0]));
+    doc.text(label, x + w / 2, y + 5.5, {align:'center'});
+    doc.setFontSize(main ? 14 : 12); doc.setTextColor(...(main ? [255,255,255] : TEAL_DARK));
+    doc.text(rs(val), x + w / 2, y + 12.8, {align:'center'});
+    x += w;
+  });
+
+  // Year-by-year table
+  y += 27;
+  section(y, 'Year-by-Year Illustration');
+  doc.autoTable({
+    startY: y + 3.5, margin:{left:L, right:L}, theme:'grid',
+    head:[['Year', hasAge ? 'Age' : 'Policy Year', 'Total Paid', 'Guaranteed Addition', 'Bonus', 'Total Added', 'Customer Value', 'Death Benefit']],
+    body: res.rows.map(r => [r.calYear, hasAge ? r.age : r.y, fmt(r.paid), fmt(r.ga), fmt(r.bonus), fmt(r.totalAdded), fmt(r.value), fmt(r.death)]),
+    foot:[[{content:'TOTAL', colSpan:2, styles:{halign:'center'}}, fmt(res.paid), fmt(res.cumGA), fmt(res.cumBonus), fmt(res.cumGA + res.cumBonus), fmt(res.maturity), '']],
+    showFoot:'lastPage',
+    styles:{fontSize:7.8, cellPadding:1.25, lineColor:LINE, lineWidth:0.2, halign:'right', textColor:[19,38,43]},
+    headStyles:{fillColor:TEAL_DARK, textColor:255, fontStyle:'bold', halign:'center', valign:'middle', fontSize:7.8},
+    footStyles:{fillColor:GOLD, textColor:[59,42,0], fontStyle:'bold', halign:'right'},
+    alternateRowStyles:{fillColor:[246,250,250]},
+    columnStyles:{0:{halign:'center', cellWidth:14}, 1:{halign:'center', cellWidth:16}, 6:{fontStyle:'bold', textColor:TEAL}},
+    didDrawCell: d => {
+      if(d.section === 'body' && [5,10,15].includes(d.row.index)){
+        doc.setDrawColor(...GOLD); doc.setLineWidth(0.6); doc.line(d.cell.x, d.cell.y, d.cell.x + d.cell.width, d.cell.y);
+      }
+    }
+  });
+
+  // Notes
+  y = doc.lastAutoTable.finalY + 6;
+  if(y > 275){ doc.addPage(); y = 15; }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
+  doc.text('-  Guaranteed Addition: 5% of the Sum Assured is added every year for the full policy term.', L, y);
+  doc.text('-  Death Benefit: 125% of the increased Sum Assured plus bonus declared up to that year.', L, y + 4.2);
+  doc.setFont('helvetica', 'italic'); doc.setTextColor(...TEAL);
+  doc.text('Powered by Thilina', L + W, y + 11, {align:'right'});
+  return doc;
+}
+
+async function makeFile(kind){
+  const {inp, res} = last;
+  const safe = inp.name.replace(/[^\w\-]+/g, '_');
+  const base = 'Wealth_Plus' + (safe ? '_' + safe : '');
+  if(kind === 'pdf'){
+    if(typeof jspdf === 'undefined') throw new Error('PDF library failed to load. Check your internet connection and reload.');
+    const doc = await buildPdf(inp, res);
+    return {blob: doc.output('blob'), name: base + '.pdf'};
+  }
+  if(typeof ExcelJS === 'undefined') throw new Error('Excel library failed to load. Check your internet connection and reload.');
+  const wb = await buildWorkbook(inp, res);
+  return {blob: new Blob([await wb.xlsx.writeBuffer()], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), name: base + '.xlsx'};
+}
+
+$('dlBtn').addEventListener('click', async () => {
+  if(!last) return;
+  const btn = $('dlBtn'); btn.disabled = true;
+  try{
+    const {blob, name} = await makeFile($('dlFormat').value);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'Wealth_Plus' + (safe ? '_' + safe : '') + '.xlsx';
+    a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }catch(e){
-    alert('Could not create the Excel file: ' + e.message);
+    alert('Could not create the file: ' + e.message);
   }finally{ btn.disabled = false; }
 });
 </script>
