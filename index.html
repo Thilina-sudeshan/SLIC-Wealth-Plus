@@ -91,7 +91,7 @@
   @media (max-width:560px){ .chart-wrap{height:300px;} }
 
   .table-scroll{overflow-x:auto; border-radius:12px; border:1px solid var(--border); -webkit-overflow-scrolling:touch;}
-  .result-table{width:100%; border-collapse:collapse; font-size:.84rem; min-width:780px;}
+  .result-table{width:100%; border-collapse:collapse; font-size:.84rem; min-width:880px;}
   .result-table th, .result-table td{padding:9px 10px; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; border-bottom:1px solid var(--border);}
   .result-table th:first-child, .result-table td:first-child{text-align:center;}
   .result-table thead th{background:var(--teal-dark); color:#fff; font-weight:600; white-space:normal; font-size:.78rem; position:sticky; top:0;}
@@ -192,6 +192,7 @@
             <th>Guaranteed Addition (Rs.)</th><th>Bonus (Rs.)</th>
             <th>Total Added (Rs.)</th>
             <th>Life Cover &amp; Maturity Value (Rs.)</th>
+            <th>Death Benefit &ndash; Natural / Accident (Rs.)</th>
           </tr></thead>
           <tbody id="resultBody"></tbody>
         </table>
@@ -248,7 +249,9 @@ function calculate(inp){
       age: inp.age === '' ? '' : inp.age + y - 1,
       prem, paid, ga, rate, bonus,
       added: ga + bonus, totalAdded: cumGA + cumBonus,
-      cumGA, cumBonus, value: inp.sa + cumGA + cumBonus
+      cumGA, cumBonus, value: inp.sa + cumGA + cumBonus,
+      // Death benefit: Sum Assured + one year's 5% + 125% of Sum Assured (fixed) + bonus accumulated so far
+      death: inp.sa + inp.sa * inp.gaPct / 100 + 1.25 * inp.sa + cumBonus
     });
   }
   return {rows, premium, paid, cumGA, cumBonus, maturity: inp.sa + cumGA + cumBonus};
@@ -302,14 +305,14 @@ $('calcBtn').addEventListener('click', () => {
     tr.innerHTML = `<td>${r.calYear}</td><td>${hasAge ? r.age : r.y}</td>
       <td${r.prem ? '' : ' style="text-align:center"'}>${r.prem ? fmt(r.paid) : '&mdash;'}</td>
       <td>${fmt(r.ga)}</td><td>${fmt(r.bonus)}</td>
-      <td>${fmt(r.totalAdded)}</td><td class="value">${fmt(r.value)}</td>`;
+      <td>${fmt(r.totalAdded)}</td><td class="value">${fmt(r.value)}</td><td>${fmt(r.death)}</td>`;
     body.appendChild(tr);
   });
   const tot = document.createElement('tr');
   tot.className = 'total-row';
   tot.innerHTML = `<td colspan="2">Total</td><td>${fmt(res.paid)}</td>
     <td>${fmt(res.cumGA)}</td><td>${fmt(res.cumBonus)}</td>
-    <td>${fmt(res.cumGA + res.cumBonus)}</td><td>${fmt(res.maturity)}</td>`;
+    <td>${fmt(res.cumGA + res.cumBonus)}</td><td>${fmt(res.maturity)}</td><td></td>`;
   body.appendChild(tot);
 
   $('emptyState').style.display = 'none';
@@ -369,8 +372,8 @@ async function buildWorkbook(inp, res){
     pageSetup:{orientation:'landscape', paperSize:9, fitToPage:true, fitToWidth:1, fitToHeight:1,
       margins:{left:0.4, right:0.4, top:0.5, bottom:0.5, header:0.2, footer:0.2}}
   });
-  ws.columns = [12, 13, 22, 22, 24, 22, 24].map(w => ({width:w}));
-  const N = 7, lastCol = 'G';
+  ws.columns = [11, 12, 19, 21, 19, 20, 24, 26].map(w => ({width:w}));
+  const N = 8, lastCol = 'H';
 
   // Header: logo + title
   for(let r = 1; r <= 4; r++) ws.getRow(r).height = 21;
@@ -379,11 +382,11 @@ async function buildWorkbook(inp, res){
     const id = wb.addImage({buffer:buf, extension:'png'});
     ws.addImage(id, {tl:{col:0.15, row:0.2}, ext:{width:104, height:82}});
   }catch(e){ /* logo is optional (e.g. when opened from disk) */ }
-  ws.mergeCells('C1:G2');
+  ws.mergeCells('C1:H2');
   Object.assign(ws.getCell('C1'), {value:'SLIC Wealth Plus', font:{name:'Calibri', size:22, bold:true, color:{argb:TEAL_DARK}}, alignment:{vertical:'middle'}});
-  ws.mergeCells('C3:G3');
+  ws.mergeCells('C3:H3');
   Object.assign(ws.getCell('C3'), {value:'Policy Benefit Illustration', font:{name:'Calibri', size:12, color:{argb:TEAL}}, alignment:{vertical:'middle'}});
-  ws.mergeCells('C4:G4');
+  ws.mergeCells('C4:H4');
   Object.assign(ws.getCell('C4'), {value:'Prepared on ' + new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}), font:{size:9, italic:true, color:{argb:'FF5D7278'}}, alignment:{vertical:'middle'}});
   ws.getRow(5).height = 5;
   for(let c = 1; c <= N; c++) ws.getCell(5, c).fill = fill(GOLD);
@@ -412,15 +415,15 @@ async function buildWorkbook(inp, res){
   for(let i = 0; i < 4; i++){
     const row = 8 + i; ws.getRow(row).height = 20;
     detail(row, 'A', 'B', 'C', 'D', left[i]);
-    detail(row, 'E', 'E', 'F', 'G', right[i]);
-    ['A','B','C','D','E','F','G'].forEach(c => ws.getCell(`${c}${row}`).border = box);
+    detail(row, 'E', 'F', 'G', 'H', right[i]);
+    ['A','B','C','D','E','F','G','H'].forEach(c => ws.getCell(`${c}${row}`).border = box);
   }
 
   // Highlight cards
   const cards = [
     ['A', 'C', 'Total Premium Paid', res.paid, false],
     ['D', 'E', 'Total Guaranteed Additions + Bonus', res.cumGA + res.cumBonus, false],
-    ['F', 'G', `Value at End of Year ${inp.term}`, res.maturity, true]
+    ['F', 'H', `Value at End of Year ${inp.term}`, res.maturity, true]
   ];
   ws.getRow(13).height = 18; ws.getRow(14).height = 30;
   cards.forEach(([a, b, label, val, main]) => {
@@ -432,7 +435,7 @@ async function buildWorkbook(inp, res){
 
   // Year-by-year table
   section(16, 'Year-by-Year Illustration');
-  const headers = ['Year', hasAge ? 'Age' : 'Policy Year', 'Total Paid', 'Guaranteed Addition', 'Bonus', 'Total Added', 'Life Cover & Maturity Value'];
+  const headers = ['Year', hasAge ? 'Age' : 'Policy Year', 'Total Paid', 'Guaranteed Addition', 'Bonus', 'Total Added', 'Life Cover & Maturity Value', 'Death Benefit – Natural / Accident'];
   const hr = ws.getRow(17); hr.height = 32;
   headers.forEach((h, i) => Object.assign(hr.getCell(i + 1), {value:h, fill:fill(TEAL_DARK), font:{bold:true, color:{argb:WHITE}, size:10},
     alignment:{horizontal:'center', vertical:'middle', wrapText:true}, border:box}));
@@ -441,7 +444,7 @@ async function buildWorkbook(inp, res){
   res.rows.forEach((r, idx) => {
     const row = ws.getRow(rowNo++); row.height = 18;
     // Total Paid shows a dash once the premium paying term is over
-    const vals = [r.calYear, hasAge ? r.age : r.y, r.prem ? r.paid : '—', r.ga, r.bonus, r.totalAdded, r.value];
+    const vals = [r.calYear, hasAge ? r.age : r.y, r.prem ? r.paid : '—', r.ga, r.bonus, r.totalAdded, r.value, r.death];
     vals.forEach((v, i) => {
       const cell = row.getCell(i + 1);
       cell.value = v;
@@ -455,7 +458,7 @@ async function buildWorkbook(inp, res){
   });
   const tot = ws.getRow(rowNo); tot.height = 22;
   ws.mergeCells(`A${rowNo}:B${rowNo}`);
-  const totVals = [null, null, res.paid, res.cumGA, res.cumBonus, res.cumGA + res.cumBonus, res.maturity];
+  const totVals = [null, null, res.paid, res.cumGA, res.cumBonus, res.cumGA + res.cumBonus, res.maturity, null];
   for(let c = 1; c <= N; c++){
     const cell = tot.getCell(c);
     if(totVals[c - 1] !== null){ cell.value = totVals[c - 1]; cell.numFmt = '#,##0.00'; }
@@ -465,7 +468,8 @@ async function buildWorkbook(inp, res){
 
   // Notes
   const notes = [
-    'Guaranteed Addition: 5% of the Sum Assured is added every year for the full policy term.'
+    'Guaranteed Addition: 5% of the Sum Assured is added every year for the full policy term.',
+    'Death Benefit (natural or accidental death): Sum Assured + 5% + 125% of the Sum Assured + bonus declared up to that year.'
   ];
   let nr = rowNo + 2;
   notes.forEach(t => {
@@ -545,15 +549,16 @@ async function buildPdf(inp, res){
   section(y, 'Year-by-Year Illustration');
   doc.autoTable({
     startY: y + 3.5, margin:{left:L, right:L}, theme:'grid',
-    head:[['Year', hasAge ? 'Age' : 'Policy Year', 'Total Paid', 'Guaranteed Addition', 'Bonus', 'Total Added', 'Life Cover & Maturity Value']],
-    body: res.rows.map(r => [r.calYear, hasAge ? r.age : r.y, r.prem ? fmt(r.paid) : {content:'-', styles:{halign:'center'}}, fmt(r.ga), fmt(r.bonus), fmt(r.totalAdded), fmt(r.value)]),
-    foot:[[{content:'TOTAL', colSpan:2, styles:{halign:'center'}}, fmt(res.paid), fmt(res.cumGA), fmt(res.cumBonus), fmt(res.cumGA + res.cumBonus), fmt(res.maturity)]],
+    head:[['Year', hasAge ? 'Age' : 'Policy Year', 'Total Paid', 'Guaranteed Addition', 'Bonus', 'Total Added', 'Life Cover & Maturity Value', 'Death Benefit - Natural / Accident']],
+    body: res.rows.map(r => [r.calYear, hasAge ? r.age : r.y, r.prem ? fmt(r.paid) : {content:'-', styles:{halign:'center'}}, fmt(r.ga), fmt(r.bonus), fmt(r.totalAdded), fmt(r.value), fmt(r.death)]),
+    foot:[[{content:'TOTAL', colSpan:2, styles:{halign:'center'}}, fmt(res.paid), fmt(res.cumGA), fmt(res.cumBonus), fmt(res.cumGA + res.cumBonus), fmt(res.maturity), '']],
     showFoot:'lastPage',
     styles:{fontSize:7.8, cellPadding:1.25, lineColor:LINE, lineWidth:0.2, halign:'right', textColor:[19,38,43]},
     headStyles:{fillColor:TEAL_DARK, textColor:255, fontStyle:'bold', halign:'center', valign:'middle', fontSize:7.8},
     footStyles:{fillColor:GOLD, textColor:[59,42,0], fontStyle:'bold', halign:'right'},
     alternateRowStyles:{fillColor:[246,250,250]},
-    columnStyles:{0:{halign:'center', cellWidth:14}, 1:{halign:'center', cellWidth:16}, 6:{fontStyle:'bold', textColor:TEAL}},
+    columnStyles:{0:{halign:'center', cellWidth:13}, 1:{halign:'center', cellWidth:12}, 2:{cellWidth:22}, 3:{cellWidth:22}, 4:{cellWidth:22},
+                  5:{cellWidth:24}, 6:{fontStyle:'bold', textColor:TEAL, cellWidth:34}, 7:{cellWidth:37}},
     didDrawCell: d => {
       if(d.section === 'body' && [5,10,15].includes(d.row.index)){
         doc.setDrawColor(...GOLD); doc.setLineWidth(0.6); doc.line(d.cell.x, d.cell.y, d.cell.x + d.cell.width, d.cell.y);
@@ -566,6 +571,7 @@ async function buildPdf(inp, res){
   if(y > 275){ doc.addPage(); y = 15; }
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
   doc.text('-  Guaranteed Addition: 5% of the Sum Assured is added every year for the full policy term.', L, y);
+  doc.text('-  Death Benefit (natural or accidental death): Sum Assured + 5% + 125% of the Sum Assured + bonus declared up to that year.', L, y + 4.2);
   doc.setFont('helvetica', 'italic'); doc.setTextColor(...TEAL);
   doc.text('Powered by Thilina', L + W, y + 11, {align:'right'});
   return doc;
